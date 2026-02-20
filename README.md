@@ -1,2 +1,2 @@
 # Startup-Projections
-Created with CodeSandbox
+website interface that gives you a income projetion ofter what you add
