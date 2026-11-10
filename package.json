@@ -1,14 +1,21 @@
 {
   "name": "startup-projections",
-  "version": "1.0.0",
-  "description": "Website interface that gives you an income projection based on what you add.",
-  "keywords": [],
+  "version": "2.0.0",
+  "description": "A startup financial cockpit: monthly revenue, cost, cash and runway projections with scenarios.",
+  "keywords": [
+    "startup",
+    "financial-model",
+    "runway",
+    "saas",
+    "projections"
+  ],
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -17,7 +24,8 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
   },
   "browserslist": [
     ">0.2%",
