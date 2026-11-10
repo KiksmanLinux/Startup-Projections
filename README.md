@@ -1,10 +1,13 @@
 # Startup Projections
 
-A startup financial cockpit: enter your assumptions once and see the monthly plan —
-revenue, costs, burn, runway, break-even, unit economics and four scenarios — update
-live in the browser.
+A calm, Scandinavian financial cockpit for early-stage founders: enter your assumptions
+once and watch the monthly plan — revenue, costs, burn, runway, break-even, unit
+economics and four scenarios — update live in the browser.
 
-The idea, the model and the roadmap are described in [CONCEPT.md](CONCEPT.md) (Norwegian).
+Two themes: **nord** (deep, near-black) and **vanilje** (warm off-white). Numbers are set in
+a tabular mono so columns line up; colour is used for meaning, not decoration.
+
+The concept, the model and the roadmap are described in [CONCEPT.md](CONCEPT.md) (Norwegian).
 
 ## What it does
 
@@ -17,9 +20,15 @@ The idea, the model and the roadmap are described in [CONCEPT.md](CONCEPT.md) (N
   extra funding needed to stay solvent.
 - **Unit economics**: CAC, LTV with the gross-margin haircut, LTV:CAC, CAC payback,
   churn, gross retention, burn multiple, rule of 40 — each graded against a benchmark.
-- **Scenarios**: Upside / Base / Downside / Stress from the same cost base, with cash
-  curves and a comparison table.
-- **Insights** written in plain language: what is about to break and what to do next.
+- **Scenarios and risk**: Upside / Base / Downside / Stress from the same cost base, a
+  comparison table, and a 5×5 sensitivity grid over growth and churn.
+- **Plan library**: save named plans locally, load them back, and compare two plans side
+  by side with deltas and overlaid cash curves.
+- **Milestones**: funding, first revenue, ARR thresholds, break-even and the tightest cash
+  point, in calendar order.
+- **Report**: a clean one-page summary with key figures, scenarios, milestones and the full
+  assumption ledger. Prints to PDF with a purpose-built print stylesheet.
+- **Insights** written in plain language, tagged Risk / Watch / Note / Strength.
 - **Share, export, persist**: the whole model travels in a URL hash, downloads as CSV,
   and is saved to localStorage on the device.
 
@@ -30,14 +39,15 @@ Nothing leaves the browser: no account, no backend, no tracking.
 ```bash
 npm install
 npm run dev      # http://localhost:3000
-npm test         # model invariants, edge cases and a 2,000-plan fuzz run
+npm test         # model invariants, analysis, edge cases, 2,000-plan fuzz
 npm run build    # production bundle in dist/
 ```
 
-Vite + React 18 + Recharts. The sources are `.jsx`; there is no TypeScript.
+Vite + React 18 + Recharts. Sources are `.jsx`; there is no TypeScript.
 
 ## Versions
 
-- **v2** is the current app.
-- **v1** (the original single-screen yearly model) is kept on the `original` branch and
-  is also reachable in the running app at `#original`.
+- **v2.1** is the current app (Scandinavian interface, plans, sensitivity, milestones, report).
+- **v2** introduced the monthly engine, scenarios and unit economics.
+- **v1** (the original single-screen yearly model) is kept on the `original` branch and is
+  also reachable in the running app at `#original`.

@@ -12,6 +12,10 @@ import {
 } from "./components/Charts.jsx";
 import { DataTable } from "./components/DataTable.jsx";
 import { Segmented, Select } from "./components/Field.jsx";
+import { Milestones } from "./components/Milestones.jsx";
+import { PlanLibrary } from "./components/PlanLibrary.jsx";
+import { ReportView } from "./components/ReportView.jsx";
+import { SensitivityTable } from "./components/SensitivityTable.jsx";
 import {
   SCENARIOS,
   SCENARIO_ORDER,
@@ -30,6 +34,7 @@ import {
   presetIdFor,
 } from "./lib/inputs.js";
 import { CURRENCIES, money, months, percent, signedPercent } from "./lib/format.js";
+import { deletePlan, listPlans, savePlan } from "./lib/plans.js";
 import {
   copyText,
   loadStoredInputs,
@@ -45,13 +50,22 @@ const TABS = [
   { id: "overview", label: "Overview" },
   { id: "revenue", label: "Revenue" },
   { id: "costs", label: "Costs" },
-  { id: "cash", label: "Cash & runway" },
+  { id: "cash", label: "Cash" },
   { id: "unit", label: "Unit economics" },
   { id: "scenarios", label: "Scenarios" },
-  { id: "table", label: "Full model" },
+  { id: "plans", label: "Plans" },
+  { id: "report", label: "Report" },
+  { id: "table", label: "Model" },
 ];
 
 const STORAGE_THEME = "startup-projections/theme";
+
+const INSIGHT_TAG = {
+  critical: { label: "Risk", className: "bad" },
+  warning: { label: "Watch", className: "warn" },
+  info: { label: "Note", className: "neutral" },
+  good: { label: "Strength", className: "good" },
+};
 
 const readTheme = () => {
   try {
@@ -79,15 +93,18 @@ const slugify = (value) =>
 function InsightList({ insights }) {
   return (
     <div className="insights">
-      {insights.map((insight) => (
-        <article key={insight.id} className={`insight insight--${insight.severity}`}>
-          <div className="insight__head">
-            <span className="insight__dot" aria-hidden="true" />
+      {insights.map((insight) => {
+        const tag = INSIGHT_TAG[insight.severity] || INSIGHT_TAG.info;
+        return (
+          <article key={insight.id} className={`insight insight--${insight.severity}`}>
+            <div className="insight__head">
+              <span className={`chip chip--${tag.className}`}>{tag.label}</span>
+            </div>
             <h4 className="insight__title">{insight.title}</h4>
-          </div>
-          <p className="insight__detail">{insight.detail}</p>
-        </article>
-      ))}
+            <p className="insight__detail">{insight.detail}</p>
+          </article>
+        );
+      })}
     </div>
   );
 }
@@ -99,27 +116,15 @@ function ScenarioComparison({ scenarios, currency, activeScenario, onSelect }) {
       value: (item) => money(item.kpis.trailingRevenue, currency, { compact: true }),
     },
     { label: "Exit ARR", value: (item) => money(item.kpis.arrEnd, currency, { compact: true }) },
-    {
-      label: "Gross margin",
-      value: (item) => percent(item.kpis.grossMargin),
-    },
-    {
-      label: "EBITDA margin",
-      value: (item) => percent(item.kpis.ebitdaMargin),
-    },
-    {
-      label: "Break-even",
-      value: (item) => item.kpis.breakEvenLabel || "Beyond horizon",
-    },
+    { label: "Gross margin", value: (item) => percent(item.kpis.grossMargin) },
+    { label: "EBITDA margin", value: (item) => percent(item.kpis.ebitdaMargin) },
+    { label: "Break-even", value: (item) => item.kpis.breakEvenLabel || "Beyond horizon" },
     {
       label: "Runway",
       value: (item) =>
         item.kpis.runwayMonths === null ? `${item.horizonMonths}+ months` : `${item.kpis.runwayMonths} months`,
     },
-    {
-      label: "Cash at horizon end",
-      value: (item) => money(item.kpis.cashEnd, currency, { compact: true }),
-    },
+    { label: "Cash at horizon end", value: (item) => money(item.kpis.cashEnd, currency, { compact: true }) },
     {
       label: "Extra funding needed",
       value: (item) => (item.kpis.fundingGap > 0 ? money(item.kpis.fundingGap, currency, { compact: true }) : "—"),
@@ -127,11 +132,11 @@ function ScenarioComparison({ scenarios, currency, activeScenario, onSelect }) {
   ];
 
   return (
-    <section className="card">
+    <section className="card card--pad">
       <header className="chart-card__head">
         <div>
           <h3 className="chart-card__title">Scenario comparison</h3>
-          <p className="chart-card__subtitle">The same plan under four assumptions. Click a column to explore it.</p>
+          <p className="chart-card__subtitle">The same plan under four assumptions. Select a column to explore it.</p>
         </div>
       </header>
       <div className="table-wrap">
@@ -183,7 +188,7 @@ function UnitEconomics({ projection, currency }) {
 
   return (
     <div className="stack">
-      <div className="kpi-grid kpi-grid--four">
+      <div className="kpi-grid">
         <KpiCard
           label="CAC"
           value={kpis.cac === null ? "n/a" : money(kpis.cac, currency, { compact: true })}
@@ -193,7 +198,7 @@ function UnitEconomics({ projection, currency }) {
         <KpiCard
           label="LTV"
           value={kpis.ltv === null || !Number.isFinite(kpis.ltv) ? "n/a" : money(kpis.ltv, currency, { compact: true })}
-          sub={`ARPU × gross margin ÷ churn`}
+          sub="ARPU × gross margin ÷ churn"
           hint="Lifetime value with the gross-margin haircut: monthly gross profit per customer divided by monthly churn."
         />
         <KpiCard
@@ -212,22 +217,25 @@ function UnitEconomics({ projection, currency }) {
 
       <div className="stack-row">
         <section className="card card--pad">
-          <h3 className="chart-card__title">Customer economics</h3>
+          <h3 className="card__title">Customer economics</h3>
           <div className="stat-list">
             <Stat label="Monthly churn" value={percent(kpis.churnMonthly)} status={status("churnMonthly", kpis.churnMonthly)} />
             <Stat label="Annual gross retention" value={percent(kpis.grrAnnual)} />
-            <Stat label="Average lifetime" value={kpis.lifetimeMonths === null ? "—" : `${kpis.lifetimeMonths.toFixed(0)} months`} />
+            <Stat
+              label="Average lifetime"
+              value={kpis.lifetimeMonths === null ? "—" : `${kpis.lifetimeMonths.toFixed(0)} months`}
+            />
             <Stat label="ARPU at start" value={money(arpuStart, currency)} />
             <Stat label="ARPU in last 12 months" value={money(kpis.arpu, currency)} />
             <Stat label="Customers at horizon end" value={Math.round(kpis.customersEnd).toLocaleString("en-US")} />
           </div>
         </section>
         <section className="card card--pad">
-          <h3 className="chart-card__title">Efficiency</h3>
+          <h3 className="card__title">Efficiency</h3>
           <div className="stat-list">
             <Stat
               label="Burn multiple"
-              value={kpis.burnMultiple === null ? "n/a" : `${kpis.burnMultiple.toFixed(1)}×`}
+              value={kpis.burnMultiple === null ? "n/a" : `${kpis.burnMultiple > 99 ? "99+" : kpis.burnMultiple.toFixed(1)}×`}
               status={status("burnMultiple", kpis.burnMultiple)}
             />
             <Stat label="Net burn / month (12m avg)" value={money(kpis.netBurn, currency, { compact: true })} />
@@ -237,18 +245,21 @@ function UnitEconomics({ projection, currency }) {
               value={kpis.yoyGrowth === null ? "n/a" : signedPercent(kpis.yoyGrowth)}
             />
             <Stat label="Funding raised" value={money(kpis.fundingRaised, currency, { compact: true })} />
-            <Stat label="Revenue model" value={inputs.revenueModel === "customers" ? "Customers × ARPU" : "Compounded growth"} />
+            <Stat
+              label="Revenue model"
+              value={inputs.revenueModel === "customers" ? "Customers × ARPU" : "Compounded growth"}
+            />
           </div>
         </section>
       </div>
 
       <section className="card card--pad card--muted">
-        <h3 className="chart-card__title">How to read this</h3>
+        <h3 className="card__title">How to read this</h3>
         <p className="prose">
-          CAC counts only marketing spend, so it understates the true cost if sales salaries are not in the marketing
-          budget — move part of payroll into marketing if you have a sales team. LTV assumes churn stays constant and
-          includes the gross-margin haircut. A healthy plan usually sits above 3× LTV:CAC with payback under a year;
-          below 2× growth is being bought with cash rather than earned.
+          CAC counts only marketing spend, so it understates the real cost when sales salaries sit in payroll — move
+          part of payroll into marketing if you have a sales team. LTV assumes constant churn and includes the
+          gross-margin haircut. A healthy plan usually sits above 3× LTV:CAC with payback under a year; below 2× means
+          growth is bought with cash rather than earned.
         </p>
       </section>
     </div>
@@ -262,6 +273,7 @@ export default function App() {
   const [tab, setTab] = useState("overview");
   const [costView, setCostView] = useState("yearly");
   const [inputsOpen, setInputsOpen] = useState(false);
+  const [plans, setPlans] = useState(() => listPlans());
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
 
@@ -308,16 +320,14 @@ export default function App() {
   }, []);
 
   const handleSidebarChange = useCallback(
-    (key, value) => {
+    (key) => {
       if (key === "reset") {
         const id = presetIdFor(inputs);
         setInputs(applyPreset(DEFAULT_INPUTS, id === "custom" ? "saas" : id));
         notify("Inputs reset to the preset defaults");
-        return;
       }
-      setInput(key, value);
     },
-    [inputs, notify, setInput]
+    [inputs, notify]
   );
 
   const handlePreset = (id) => {
@@ -347,6 +357,26 @@ export default function App() {
     notify("CSV downloaded");
   };
 
+  const handleSavePlan = (name) => {
+    const plan = savePlan(
+      normalizeInputs(inputs),
+      name || `${inputs.companyName} — ${SCENARIOS[inputs.scenario]?.label || "Base"}`
+    );
+    setPlans(listPlans());
+    notify(`Saved “${plan.name}”`);
+  };
+
+  const handleLoadPlan = (plan) => {
+    setInputs(normalizeInputs(plan.inputs));
+    notify(`Loaded “${plan.name}”`);
+  };
+
+  const handleDeletePlan = (plan) => {
+    deletePlan(plan.id);
+    setPlans(listPlans());
+    notify(`Deleted “${plan.name}”`);
+  };
+
   const runwayStatus =
     kpis.runwayMonths === null ? "good" : kpis.runwayMonths <= 12 ? "bad" : kpis.runwayMonths <= 18 ? "warn" : "good";
   const runwayMeter = kpis.runwayMonths === null ? 1 : Math.min(1, kpis.runwayMonths / 24);
@@ -360,7 +390,7 @@ export default function App() {
             <strong>Version 1</strong> — the original single-screen model, kept for reference.
           </span>
           <a className="btn btn--quiet" href="#" onClick={() => setRoute("app")}>
-            ← Back to the new cockpit
+            ← Back to the current app
           </a>
         </div>
         <Suspense fallback={<div className="legacy__loading">Loading version 1…</div>}>
@@ -375,14 +405,14 @@ export default function App() {
       <header className="topbar">
         <a className="brand" href="#" aria-label="Startup Projections home">
           <span className="brand__mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 17l5-6 4 3 5-8 4 5" />
-              <path d="M3 21h18" opacity="0.45" />
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 16.5l4.5-5 3.2 2.6L19 6" />
+              <path d="M4 20h16" opacity="0.4" />
             </svg>
           </span>
           <span className="brand__text">
             <span className="brand__name">Startup Projections</span>
-            <span className="brand__tag">Monthly model · burn · runway · scenarios</span>
+            <span className="brand__tag">Monthly model, runway and scenarios</span>
           </span>
         </a>
 
@@ -427,6 +457,9 @@ export default function App() {
             <button type="button" className="btn btn--quiet" onClick={handleExport} title="Download the model as CSV">
               CSV
             </button>
+            <button type="button" className="btn" onClick={() => handleSavePlan()}>
+              Save plan
+            </button>
             <button
               type="button"
               className="icon-btn"
@@ -463,7 +496,7 @@ export default function App() {
         </div>
       </div>
 
-      <div className={`layout ${inputsOpen ? "is-inputs-open" : ""}`}>
+      <div className={`layout ${inputsOpen ? "is-inputs-open" : ""} ${tab === "report" ? "is-report" : ""}`}>
         <Sidebar inputs={inputs} setInput={setInput} onChange={handleSidebarChange} projection={projection} />
 
         <main className="main">
@@ -511,6 +544,20 @@ export default function App() {
               meter={runwayMeter}
               hint="Months until the cash balance goes negative. Investors usually want 18–24 months after a round."
             />
+            <KpiCard
+              label="Break-even"
+              value={kpis.breakEvenLabel || "Beyond horizon"}
+              sub={kpis.breakEvenMonth === null ? "Costs stay above revenue" : "First month with positive EBITDA"}
+              status={kpis.breakEvenMonth === null ? "warn" : "good"}
+              hint="The first month where revenue covers all operating costs."
+            />
+            <KpiCard
+              label="Net burn"
+              value={money(kpis.netBurn, currency, { compact: true })}
+              sub="Trailing 12-month average"
+              status={kpis.netBurn > 0 ? "neutral" : "good"}
+              hint="Cash consumed per month after revenue. Negative means the plan already generates cash."
+            />
           </div>
 
           <nav className="tabs" aria-label="Views">
@@ -531,9 +578,9 @@ export default function App() {
             <div className="stack">
               <OverviewChart projection={projection} currency={currency} theme={theme} />
               <InsightList insights={insights} />
-              <div className="stack-row stack-row--stats">
+              <div className="stack-row">
                 <section className="card card--pad">
-                  <h3 className="chart-card__title">Plan at a glance</h3>
+                  <h3 className="card__title">Plan at a glance</h3>
                   <div className="stat-list stat-list--two">
                     <Stat label="Revenue, year 1" value={money(projection.years[0]?.revenue || 0, currency, { compact: true })} />
                     <Stat
@@ -543,10 +590,13 @@ export default function App() {
                     <Stat label="Funding raised" value={money(kpis.fundingRaised, currency, { compact: true })} />
                     <Stat label="Headcount at end" value={Math.round(kpis.headcountEnd).toString()} />
                     <Stat label="Customers at end" value={Math.round(kpis.customersEnd).toLocaleString("en-US")} />
-                    <Stat label="Peak burn" value={money(Math.max(...projection.months.map((month) => month.netBurn)), currency, { compact: true })} />
+                    <Stat
+                      label="Peak burn"
+                      value={money(Math.max(...projection.months.map((month) => month.netBurn)), currency, { compact: true })}
+                    />
                   </div>
                 </section>
-                <MarginChart projection={projection} theme={theme} currency={currency} />
+                <MarginChart projection={projection} theme={theme} />
               </div>
             </div>
           )}
@@ -554,19 +604,24 @@ export default function App() {
           {tab === "revenue" && (
             <div className="stack">
               <RevenueChart projection={projection} currency={currency} theme={theme} />
-              <div className="stack-row stack-row--stats">
+              <div className="stack-row">
                 <section className="card card--pad">
-                  <h3 className="chart-card__title">Revenue detail</h3>
+                  <h3 className="card__title">Revenue detail</h3>
                   <div className="stat-list stat-list--two">
                     <Stat label="MRR in month 1" value={money(kpis.mrrStart, currency, { compact: true })} />
                     <Stat label="MRR at the end" value={money(kpis.mrrEnd, currency, { compact: true })} />
                     <Stat label="Exit ARR" value={money(kpis.arrEnd, currency, { compact: true })} />
                     <Stat label="Customers at end" value={Math.round(kpis.customersEnd).toLocaleString("en-US")} />
                     <Stat label="ARPU (trailing)" value={money(kpis.arpu, currency)} />
-                    <Stat label="Growth per month (avg)" value={percent(Math.pow(kpis.mrrEnd / Math.max(1, kpis.mrrStart), 1 / Math.max(1, inputs.horizonMonths - 1)) - 1)} />
+                    <Stat
+                      label="Growth per month (avg)"
+                      value={percent(
+                        Math.pow(kpis.mrrEnd / Math.max(1, kpis.mrrStart), 1 / Math.max(1, inputs.horizonMonths - 1)) - 1
+                      )}
+                    />
                   </div>
                 </section>
-                <MarginChart projection={projection} theme={theme} currency={currency} />
+                <MarginChart projection={projection} theme={theme} />
               </div>
             </div>
           )}
@@ -574,42 +629,66 @@ export default function App() {
           {tab === "costs" && (
             <div className="stack">
               <CostChart projection={projection} currency={currency} theme={theme} yearly={costView === "yearly"} />
-              <div className="stack-row stack-row--stats">
+              <div className="stack-row">
                 <section className="card card--pad">
-                  <h3 className="chart-card__title">Cost structure</h3>
+                  <h3 className="card__title">Cost structure</h3>
                   <div className="stat-list stat-list--two">
                     <Stat label="Operating costs, year 1" value={money(projection.years[0]?.opex || 0, currency, { compact: true })} />
                     <Stat
                       label={`Operating costs, year ${projection.years.length}`}
                       value={money(projection.years[projection.years.length - 1]?.opex || 0, currency, { compact: true })}
                     />
-                    <Stat label="Payroll share of OpEx" value={percent(
-                      projection.months[projection.months.length - 1].opex > 0
-                        ? projection.months[projection.months.length - 1].people / projection.months[projection.months.length - 1].opex
-                        : 0
-                    )} />
-                    <Stat label="Marketing share of OpEx" value={percent(
-                      projection.months[projection.months.length - 1].opex > 0
-                        ? projection.months[projection.months.length - 1].marketing / projection.months[projection.months.length - 1].opex
-                        : 0
-                    )} />
+                    <Stat
+                      label="Payroll share of OpEx"
+                      value={percent(
+                        projection.months[projection.months.length - 1].opex > 0
+                          ? projection.months[projection.months.length - 1].people /
+                              projection.months[projection.months.length - 1].opex
+                          : 0
+                      )}
+                    />
+                    <Stat
+                      label="Marketing share of OpEx"
+                      value={percent(
+                        projection.months[projection.months.length - 1].opex > 0
+                          ? projection.months[projection.months.length - 1].marketing /
+                              projection.months[projection.months.length - 1].opex
+                          : 0
+                      )}
+                    />
                     <Stat label="Headcount at end" value={Math.round(kpis.headcountEnd).toString()} />
-                    <Stat label="Cost per head / month" value={money(
-                      projection.months[projection.months.length - 1].headcount > 0
-                        ? projection.months[projection.months.length - 1].people / projection.months[projection.months.length - 1].headcount
-                        : 0,
-                      currency
-                    )} />
+                    <Stat
+                      label="Cost per head / month"
+                      value={money(
+                        projection.months[projection.months.length - 1].headcount > 0
+                          ? projection.months[projection.months.length - 1].people /
+                              projection.months[projection.months.length - 1].headcount
+                          : 0,
+                        currency
+                      )}
+                    />
                   </div>
                 </section>
                 <section className="card card--pad">
                   <div className="card__head-inline">
-                    <h3 className="chart-card__title">Monthly view</h3>
+                    <h3 className="card__title">Monthly view</h3>
                     <div className="seg seg--small" role="radiogroup" aria-label="Cost granularity">
-                      <button type="button" role="radio" aria-checked={costView === "yearly"} className={`seg__item ${costView === "yearly" ? "is-active" : ""}`} onClick={() => setCostView("yearly")}>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={costView === "yearly"}
+                        className={`seg__item ${costView === "yearly" ? "is-active" : ""}`}
+                        onClick={() => setCostView("yearly")}
+                      >
                         Yearly
                       </button>
-                      <button type="button" role="radio" aria-checked={costView === "monthly"} className={`seg__item ${costView === "monthly" ? "is-active" : ""}`} onClick={() => setCostView("monthly")}>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={costView === "monthly"}
+                        className={`seg__item ${costView === "monthly" ? "is-active" : ""}`}
+                        onClick={() => setCostView("monthly")}
+                      >
                         Monthly
                       </button>
                     </div>
@@ -623,7 +702,7 @@ export default function App() {
           {tab === "cash" && (
             <div className="stack">
               <CashChart projection={projection} currency={currency} theme={theme} />
-              <div className="kpi-grid kpi-grid--four">
+              <div className="kpi-grid">
                 <KpiCard
                   label="Runway"
                   value={kpis.runwayMonths === null ? `${inputs.horizonMonths}+ mo` : `${kpis.runwayMonths} mo`}
@@ -632,7 +711,12 @@ export default function App() {
                   sub={kpis.runwayMonths === null ? "Solvent through the horizon" : `Zero around ${kpis.runwayMonthLabel}`}
                 />
                 <KpiCard label="Gross burn" value={money(kpis.grossBurn, currency, { compact: true })} sub="Monthly costs before revenue" />
-                <KpiCard label="Net burn" value={money(kpis.netBurn, currency, { compact: true })} sub="Trailing 12-month average" status={kpis.netBurn > 0 ? "warn" : "good"} />
+                <KpiCard
+                  label="Net burn"
+                  value={money(kpis.netBurn, currency, { compact: true })}
+                  sub="Trailing 12-month average"
+                  status={kpis.netBurn > 0 ? "warn" : "good"}
+                />
                 <KpiCard
                   label="Extra funding needed"
                   value={kpis.fundingGap > 0 ? money(kpis.fundingGap, currency, { compact: true }) : "None"}
@@ -640,20 +724,29 @@ export default function App() {
                   status={kpis.fundingGap > 0 ? "bad" : "good"}
                 />
               </div>
-              <div className="stack-row stack-row--stats">
+              <div className="stack-row">
                 <section className="card card--pad">
-                  <h3 className="chart-card__title">Cash detail</h3>
+                  <h3 className="card__title">Cash detail</h3>
                   <div className="stat-list stat-list--two">
                     <Stat label="Starting cash" value={money(kpis.cashStart, currency, { compact: true })} />
                     <Stat label="Funding raised" value={money(kpis.fundingRaised, currency, { compact: true })} />
-                    <Stat label="Cash at horizon end" value={money(kpis.cashEnd, currency, { compact: true })} status={kpis.cashEnd > 0 ? "good" : "bad"} />
-                    <Stat label="Lowest cash point" value={money(kpis.minCash, currency, { compact: true })} status={kpis.minCash >= 0 ? "good" : "bad"} />
+                    <Stat
+                      label="Cash at horizon end"
+                      value={money(kpis.cashEnd, currency, { compact: true })}
+                      status={kpis.cashEnd > 0 ? "good" : "bad"}
+                    />
+                    <Stat
+                      label="Lowest cash point"
+                      value={money(kpis.minCash, currency, { compact: true })}
+                      status={kpis.minCash >= 0 ? "good" : "bad"}
+                    />
                     <Stat label="Break-even" value={kpis.breakEvenLabel || "Beyond horizon"} />
                     <Stat label="Months to break-even" value={kpis.breakEvenMonth === null ? "—" : months(kpis.breakEvenMonth)} />
                   </div>
                 </section>
                 <BurnChart projection={projection} currency={currency} theme={theme} />
               </div>
+              <Milestones projection={projection} />
             </div>
           )}
 
@@ -668,15 +761,36 @@ export default function App() {
                 activeScenario={inputs.scenario}
                 onSelect={(value) => setInput("scenario", value)}
               />
+              <SensitivityTable inputs={inputs} currency={currency} />
             </div>
+          )}
+
+          {tab === "plans" && (
+            <PlanLibrary
+              plans={plans}
+              currentInputs={inputs}
+              currency={currency}
+              theme={theme}
+              onSave={handleSavePlan}
+              onLoad={handleLoadPlan}
+              onDelete={handleDeletePlan}
+            />
+          )}
+
+          {tab === "report" && (
+            <ReportView
+              inputs={inputs}
+              projection={projection}
+              scenarios={scenarios}
+              currency={currency}
+              onPrint={() => window.print()}
+            />
           )}
 
           {tab === "table" && <DataTable projection={projection} currency={currency} />}
 
           <footer className="footer">
-            <span>
-              Everything runs in your browser — no account, no upload. Saved automatically on this device.
-            </span>
+            <span>Everything runs in your browser — no account, no upload. Saved automatically on this device.</span>
             <span className="footer__links">
               <button type="button" className="link-btn" onClick={handleShare}>
                 Copy share link
