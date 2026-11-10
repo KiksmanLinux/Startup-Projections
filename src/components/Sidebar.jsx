@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NumberField, Segmented, TextField } from "./Field.jsx";
-import { FIELD_GROUPS, REVENUE_MODELS, fieldsForModel } from "../lib/inputs.js";
+import { FIELD_GROUPS, REVENUE_MODELS, fieldDef, fieldsForModel } from "../lib/inputs.js";
 import { amount, percent } from "../lib/format.js";
 
 function Section({ group, open, onToggle, children }) {
@@ -67,6 +67,17 @@ function FundingEditor({ inputs, currency, onChange }) {
               />
             </label>
             <label className="mini-field">
+              <span>Pre-money ({currency})</span>
+              <input
+                type="number"
+                min="0"
+                step="50000"
+                value={event.preMoney ?? 0}
+                aria-label={`Round ${index + 1} pre-money`}
+                onChange={(e) => update(index, { preMoney: Math.max(0, Number(e.target.value) || 0) })}
+              />
+            </label>
+            <label className="mini-field">
               <span>Start month</span>
               <input
                 type="number"
@@ -91,6 +102,12 @@ function FundingEditor({ inputs, currency, onChange }) {
               Remove
             </button>
           </div>
+          {Number(event.amount) > 0 && Number(event.preMoney) > 0 && (
+            <p className="hint hint--quiet">
+              Post-money {amount(Number(event.preMoney) + Number(event.amount), currency)} · investor{" "}
+              {percent(Number(event.amount) / (Number(event.preMoney) + Number(event.amount)))} of the company
+            </p>
+          )}
         </div>
       ))}
       <p className="hint hint--quiet">
@@ -143,7 +160,7 @@ export function Sidebar({ inputs, setInput, onChange, projection }) {
         </div>
       </div>
 
-      {FIELD_GROUPS.map((group) => {
+      {FIELD_GROUPS.filter((group) => group.id !== "timing").map((group) => {
         const fields = fieldsForModel(group, inputs.revenueModel);
         if (fields.length === 0) return null;
         return (
@@ -190,6 +207,19 @@ export function Sidebar({ inputs, setInput, onChange, projection }) {
           currency={currency}
           onChange={(value) => setInput("startingCash", value)}
         />
+        {["collectionLagDays", "cashFloor"].map((key) => {
+          const field = fieldDef(key);
+          if (!field) return null;
+          return (
+            <NumberField
+              key={key}
+              field={field}
+              value={inputs[key]}
+              currency={currency}
+              onChange={(value) => setInput(key, value)}
+            />
+          );
+        })}
         <FundingEditor
           inputs={inputs}
           currency={currency}

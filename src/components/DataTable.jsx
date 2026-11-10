@@ -4,6 +4,7 @@ import { money, percent } from "../lib/format.js";
 const COLUMNS = [
   { key: "label", label: "Month", sticky: true },
   { key: "revenue", label: "Revenue", type: "money" },
+  { key: "collected", label: "Collected", type: "money", muted: true },
   { key: "cogs", label: "COGS", type: "money", muted: true },
   { key: "grossProfit", label: "Gross profit", type: "money" },
   { key: "people", label: "Payroll", type: "money", muted: true },
@@ -13,6 +14,7 @@ const COLUMNS = [
   { key: "other", label: "Other", type: "money", muted: true },
   { key: "opex", label: "OpEx", type: "money" },
   { key: "ebitda", label: "EBITDA", type: "money", signed: true },
+  { key: "tax", label: "Tax", type: "money", muted: true },
   { key: "funding", label: "Funding", type: "money" },
   { key: "cash", label: "Cash", type: "money", signed: true },
 ];
@@ -23,6 +25,8 @@ const YEAR_COLUMNS = [
   { key: "grossProfit", label: "Gross profit", type: "money" },
   { key: "opex", label: "OpEx", type: "money" },
   { key: "ebitda", label: "EBITDA", type: "money", signed: true },
+  { key: "tax", label: "Tax", type: "money", muted: true },
+  { key: "netIncome", label: "Net income", type: "money", signed: true },
   { key: "grossMargin", label: "Gross margin", type: "percent" },
   { key: "ebitdaMargin", label: "EBITDA margin", type: "percent" },
   { key: "arrEnd", label: "Exit ARR", type: "money" },

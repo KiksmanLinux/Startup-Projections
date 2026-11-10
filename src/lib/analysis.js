@@ -199,6 +199,24 @@ export function buildAssumptionLedger(inputs) {
     ],
   });
 
+  const cap = buildCapTable(inputs);
+  if (cap.hasPriced) {
+    groups.push({
+      id: "ownership",
+      title: "Ownership",
+      items: [
+        { label: "Founder ownership after all rounds", value: percent(cap.founderFinal) },
+        { label: "Total dilution", value: percent(cap.totalDilution) },
+        ...cap.rows
+          .filter((row) => row.priced)
+          .map((row) => ({ label: `${row.label} — investor share`, value: percent(row.investorPct) })),
+        ...(cap.unpricedRounds > 0
+          ? [{ label: "Unpriced rounds", value: `${cap.unpricedRounds} (not in dilution)` }]
+          : []),
+      ],
+    });
+  }
+
   groups.push({
     id: "plan",
     title: "Plan",
@@ -241,6 +259,55 @@ export function comparePlans(planA, planB) {
   ];
 
   return { a, b, rows };
+}
+
+/**
+ * Founder ownership across priced rounds. A round only dilutes when both the
+ * raise and a pre-money valuation are set; SAFEs and notes stay unpriced.
+ * The option pool is assumed to sit inside the pre-money valuation.
+ */
+export function buildCapTable(inputs) {
+  const events = [...(inputs?.fundingEvents || [])].sort(
+    (a, b) => Number(a.month) - Number(b.month) || String(a.label).localeCompare(String(b.label))
+  );
+
+  let founder = 1;
+  let totalRaised = 0;
+  let pricedRounds = 0;
+
+  const rows = events.map((event) => {
+    const amount = Math.max(0, Number(event.amount) || 0);
+    const preMoney = Math.max(0, Number(event.preMoney) || 0);
+    const priced = amount > 0 && preMoney > 0;
+    const postMoney = priced ? preMoney + amount : null;
+    const investorPct = priced ? amount / postMoney : null;
+    if (priced) {
+      founder *= 1 - investorPct;
+      pricedRounds += 1;
+    }
+    totalRaised += amount;
+    return {
+      id: event.id,
+      label: event.label,
+      month: event.month,
+      amount,
+      preMoney,
+      postMoney,
+      investorPct,
+      priced,
+      founderAfter: founder,
+    };
+  });
+
+  return {
+    rows,
+    hasPriced: pricedRounds > 0,
+    founderFinal: founder,
+    totalDilution: 1 - founder,
+    totalRaised,
+    pricedRounds,
+    unpricedRounds: rows.length - pricedRounds,
+  };
 }
 
 export function formatCompareValue(row, value, currency) {

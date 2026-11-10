@@ -18,6 +18,11 @@ The concept, the model and the roadmap are described in [CONCEPT.md](CONCEPT.md)
   budget plus an optional share of revenue, tools, office and other OpEx.
 - **Cash**: starting cash, funding rounds by month, runway, lowest cash point and the
   extra funding needed to stay solvent.
+- **Cash timing**: collection terms of 0–90 days separate revenue from cash in the bank,
+  receivables are tracked month by month, and a cash floor gives runway to the balance you
+  refuse to go below.
+- **Corporate tax**: one editable rate on positive profit, with earlier losses carried
+  forward.
 - **Unit economics**: CAC, LTV with the gross-margin haircut, LTV:CAC, CAC payback,
   churn, gross retention, burn multiple, rule of 40 — each graded against a benchmark.
 - **Scenarios and risk**: Upside / Base / Downside / Stress from the same cost base, a
@@ -26,6 +31,8 @@ The concept, the model and the roadmap are described in [CONCEPT.md](CONCEPT.md)
   by side with deltas and overlaid cash curves.
 - **Milestones**: funding, first revenue, ARR thresholds, break-even and the tightest cash
   point, in calendar order.
+- **Ownership**: a pre-money valuation per round yields post-money, investor share and
+  founder dilution, shown in the Cash tab and in the report. Unpriced SAFEs are excluded.
 - **Report**: a clean one-page summary with key figures, scenarios, milestones and the full
   assumption ledger. Prints to PDF with a purpose-built print stylesheet.
 - **Insights** written in plain language, tagged Risk / Watch / Note / Strength.

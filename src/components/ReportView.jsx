@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { buildAssumptionLedger } from "../lib/analysis.js";
+import { buildAssumptionLedger, buildCapTable } from "../lib/analysis.js";
 import { SCENARIOS, SCENARIO_ORDER } from "../lib/finance.js";
 import { money, percent } from "../lib/format.js";
 import { Milestones } from "./Milestones.jsx";
@@ -9,6 +9,7 @@ const today = () =>
 
 export function ReportView({ inputs, projection, scenarios, currency, onPrint }) {
   const ledger = useMemo(() => buildAssumptionLedger(inputs), [inputs]);
+  const cap = useMemo(() => buildCapTable(inputs), [inputs]);
   const kpis = projection.kpis;
 
   const metrics = [
@@ -26,6 +27,8 @@ export function ReportView({ inputs, projection, scenarios, currency, onPrint })
     { label: "Customers at end", value: Math.round(kpis.customersEnd).toLocaleString("en-US") },
     { label: "Headcount at end", value: String(Math.round(kpis.headcountEnd)) },
     { label: "Funding raised", value: money(kpis.fundingRaised, currency, { compact: true }) },
+    { label: "Corporate tax paid", value: money(kpis.taxPaid, currency, { compact: true }) },
+    { label: "Receivables at end", value: money(kpis.receivables, currency, { compact: true }) },
     {
       label: "Extra funding needed",
       value: kpis.fundingGap > 0 ? money(kpis.fundingGap, currency, { compact: true }) : "None",
@@ -97,6 +100,39 @@ export function ReportView({ inputs, projection, scenarios, currency, onPrint })
         <Milestones projection={projection} compact />
       </section>
 
+      {cap.hasPriced && (
+        <section className="report__section">
+          <h3 className="report__section-title">Ownership</h3>
+          <table className="report__table">
+            <thead>
+              <tr>
+                <th>Round</th>
+                <th>Raise</th>
+                <th>Pre-money</th>
+                <th>Post-money</th>
+                <th>Investor</th>
+                <th>Founder after</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cap.rows.map((row) => (
+                <tr key={row.id}>
+                  <td>{row.label}</td>
+                  <td>{money(row.amount, currency, { compact: true })}</td>
+                  <td>{row.priced ? money(row.preMoney, currency, { compact: true }) : "—"}</td>
+                  <td>{row.priced ? money(row.postMoney, currency, { compact: true }) : "—"}</td>
+                  <td>{row.priced ? percent(row.investorPct) : "unpriced"}</td>
+                  <td>{percent(row.founderAfter)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="report__note" style={{ marginTop: 10 }}>
+            Unpriced rounds (SAFEs and notes) are excluded from the dilution.
+          </p>
+        </section>
+      )}
+
       <section className="report__section">
         <h3 className="report__section-title">Assumptions</h3>
         <div className="report__ledger">
@@ -116,8 +152,10 @@ export function ReportView({ inputs, projection, scenarios, currency, onPrint })
 
       <p className="report__note">
         All figures are a plan, not a forecast: they follow directly from the assumptions above and are calculated
-        month by month in the browser. The model excludes tax, depreciation, working capital and one-off
-        investments. Scenario multipliers: {SCENARIO_ORDER.map((id) => `${SCENARIOS[id].label} ${SCENARIOS[id].growthMultiplier}× growth`).join(", ")}.
+        month by month in the browser. Corporate tax is charged at {percent(inputs.taxRate)} on positive profit with
+        earlier losses carried forward, and revenue is collected with a {inputs.collectionLagDays}-day lag.
+        Depreciation, capital expenditure, VAT and one-off investments are excluded. Scenario multipliers:{" "}
+        {SCENARIO_ORDER.map((id) => `${SCENARIOS[id].label} ${SCENARIOS[id].growthMultiplier}× growth`).join(", ")}.
       </p>
     </article>
   );

@@ -62,11 +62,11 @@ describe("projection engine", () => {
     }
   });
 
-  it("keeps the cash identity: starting cash + EBITDA + funding", () => {
+  it("keeps the cash identity: receipts − costs − tax + funding", () => {
     const projection = buildProjection(base());
     let running = projection.inputs.startingCash;
     for (const month of projection.months) {
-      running += month.ebitda + month.funding;
+      running += month.collected - month.cogs - month.opex - month.tax + month.funding;
       expect(month.cash).toBeCloseTo(running, 6);
     }
     expect(projection.months[projection.months.length - 1].cash).toBeCloseTo(projection.kpis.cashEnd, 6);
@@ -204,6 +204,10 @@ describe("projection engine", () => {
             "ebitda",
             "cash",
             "customers",
+            "collected",
+            "receivables",
+            "tax",
+            "cashBurn",
           ]) {
             if (!Number.isFinite(month[key])) {
               throw new Error(`seed ${seed} (${scenarioId}) produced ${key}=${month[key]}`);

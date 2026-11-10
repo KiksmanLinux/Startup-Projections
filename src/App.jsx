@@ -10,6 +10,7 @@ import {
   RevenueChart,
   ScenarioChart,
 } from "./components/Charts.jsx";
+import { CapTable } from "./components/CapTable.jsx";
 import { DataTable } from "./components/DataTable.jsx";
 import { Segmented, Select } from "./components/Field.jsx";
 import { Milestones } from "./components/Milestones.jsx";
@@ -708,7 +709,13 @@ export default function App() {
                   value={kpis.runwayMonths === null ? `${inputs.horizonMonths}+ mo` : `${kpis.runwayMonths} mo`}
                   status={runwayStatus}
                   meter={runwayMeter}
-                  sub={kpis.runwayMonths === null ? "Solvent through the horizon" : `Zero around ${kpis.runwayMonthLabel}`}
+                  sub={
+                    kpis.runwayMonths === null
+                      ? "Solvent through the horizon"
+                      : kpis.cashFloor > 0 && kpis.runwayToFloorMonths !== null
+                      ? `Below your floor around ${kpis.runwayToFloorLabel}`
+                      : `Zero around ${kpis.runwayMonthLabel}`
+                  }
                 />
                 <KpiCard label="Gross burn" value={money(kpis.grossBurn, currency, { compact: true })} sub="Monthly costs before revenue" />
                 <KpiCard
@@ -730,6 +737,19 @@ export default function App() {
                   <div className="stat-list stat-list--two">
                     <Stat label="Starting cash" value={money(kpis.cashStart, currency, { compact: true })} />
                     <Stat label="Funding raised" value={money(kpis.fundingRaised, currency, { compact: true })} />
+                    <Stat label="Corporate tax paid" value={money(kpis.taxPaid, currency, { compact: true })} />
+                    <Stat label="Receivables at end" value={money(kpis.receivables, currency, { compact: true })} />
+                    <Stat label="Cash burn / month" value={money(kpis.cashBurn, currency, { compact: true })} />
+                    <Stat
+                      label="Runway to cash floor"
+                      value={
+                        kpis.cashFloor === 0
+                          ? "No floor set"
+                          : kpis.runwayToFloorMonths === null
+                          ? `${inputs.horizonMonths}+ mo`
+                          : `${kpis.runwayToFloorMonths} mo`
+                      }
+                    />
                     <Stat
                       label="Cash at horizon end"
                       value={money(kpis.cashEnd, currency, { compact: true })}
@@ -747,6 +767,7 @@ export default function App() {
                 <BurnChart projection={projection} currency={currency} theme={theme} />
               </div>
               <Milestones projection={projection} />
+              <CapTable inputs={inputs} currency={currency} />
             </div>
           )}
 

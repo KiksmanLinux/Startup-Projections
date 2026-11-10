@@ -83,9 +83,21 @@ export function buildProjection(inputs, scenarioId = inputs?.scenario) {
 
   const fundingEvents = Array.isArray(inputs?.fundingEvents) ? inputs.fundingEvents : [];
 
+  // Cash timing: revenue is recognised when invoiced, cash arrives later.
+  const collectionLagDays = clamp(num(inputs?.collectionLagDays), 0, 90);
+  const lag = collectionLagDays / 30;
+  const lagNext = clamp(lag, 0, 1);
+  const lagSecond = clamp(lag - 1, 0, 1);
+  const taxRate = clamp(num(inputs?.taxRate), 0, 0.6);
+  const cashFloor = Math.max(0, num(inputs?.cashFloor));
+
   let customers = Math.max(0, num(inputs?.startingCustomers));
   let mrr = Math.max(0, num(inputs?.startingMrr));
   let cash = num(inputs?.startingCash);
+  let previousRevenue = 0;
+  let twoMonthsAgoRevenue = 0;
+  let receivables = 0;
+  let taxLossCarry = 0;
 
   const months = [];
 
@@ -138,8 +150,26 @@ export function buildProjection(inputs, scenarioId = inputs?.scenario) {
       .filter((event) => Math.round(num(event.month)) === index)
       .reduce((total, event) => total + Math.max(0, num(event.amount)), 0);
 
+    // Receipts follow the collection lag; the unpaid remainder sits in receivables.
+    const collected =
+      revenue * (1 - lagNext) +
+      previousRevenue * Math.max(0, lagNext - lagSecond) +
+      twoMonthsAgoRevenue * lagSecond;
+    receivables += revenue - collected;
+
+    // Corporate tax on positive profit, with earlier losses carried forward.
+    let taxableProfit = 0;
+    if (ebitda > 0) {
+      const usedLoss = Math.min(taxLossCarry, ebitda);
+      taxLossCarry -= usedLoss;
+      taxableProfit = ebitda - usedLoss;
+    } else {
+      taxLossCarry += -ebitda;
+    }
+    const tax = taxableProfit * taxRate;
+
     const openingCash = cash;
-    cash = openingCash + ebitda + funding;
+    cash = openingCash + collected - cogs - opex - tax + funding;
 
     months.push({
       index,
@@ -155,6 +185,10 @@ export function buildProjection(inputs, scenarioId = inputs?.scenario) {
       cogs,
       grossProfit,
       grossMargin: safeDiv(grossProfit, revenue) ?? 0,
+      collected,
+      receivables,
+      tax,
+      taxableProfit,
       headcount,
       people,
       marketing,
@@ -166,10 +200,14 @@ export function buildProjection(inputs, scenarioId = inputs?.scenario) {
       ebitdaMargin: safeDiv(ebitda, revenue) ?? 0,
       grossBurn: cogs + opex,
       netBurn: cogs + opex - revenue,
+      cashBurn: cogs + opex + tax - collected,
       funding,
       openingCash,
       cash,
     });
+
+    twoMonthsAgoRevenue = previousRevenue;
+    previousRevenue = revenue;
   }
 
   const years = [];
@@ -194,6 +232,9 @@ export function buildProjection(inputs, scenarioId = inputs?.scenario) {
       opex: sum(slice, "opex"),
       ebitda,
       ebitdaMargin: safeDiv(ebitda, revenue) ?? 0,
+      tax: sum(slice, "tax"),
+      netIncome: ebitda - sum(slice, "tax"),
+      collected: sum(slice, "collected"),
       funding: sum(slice, "funding"),
       cashEnd: last.cash,
       arrEnd: last.revenue * 12,
@@ -223,6 +264,7 @@ export function buildProjection(inputs, scenarioId = inputs?.scenario) {
   const minCash = Math.min(num(inputs?.startingCash), ...months.map((month) => month.cash));
   const fundingGap = minCash < 0 ? -minCash : 0;
   const fundingRaised = sum(months, "funding");
+  const floorBreach = cashFloor > 0 ? months.find((month) => month.cash < cashFloor) || null : null;
 
   const trailingArpu = safeDiv(trailingRevenue, trailingCustomers) ?? 0;
   const trailingNetBurn = (trailingCogs + trailingOpex - trailingRevenue) / Math.max(1, trailing.length);
@@ -253,6 +295,14 @@ export function buildProjection(inputs, scenarioId = inputs?.scenario) {
     minCash,
     fundingGap,
     fundingRaised,
+    taxPaid: sum(months, "tax"),
+    receivables: last.receivables,
+    cashBurn: (trailingCogs + trailingOpex + sum(trailing, "tax") - sum(trailing, "collected")) / Math.max(1, trailing.length),
+    cashFloor,
+    runwayToFloorMonths: floorBreach ? floorBreach.index : null,
+    runwayToFloorLabel: floorBreach ? floorBreach.longLabel : null,
+    collectionLagDays,
+    taxRate,
     runwayMonths: depletion ? depletion.index : null,
     runwayMonthLabel: depletion ? depletion.longLabel : null,
     breakEvenMonth: breakEven ? breakEven.index : null,
@@ -347,6 +397,40 @@ export function buildInsights(projection) {
       severity: "warning",
       title: `${kpis.runwayMonths} months of runway`,
       detail: `Cash bottoms out around ${kpis.runwayMonthLabel}. Fundraising usually takes 4–6 months, so the round should be underway before you are 9 months out.`,
+    });
+  }
+
+  if (kpis.runwayToFloorMonths !== null && kpis.runwayToFloorMonths <= 18) {
+    insights.push({
+      id: "cash-floor",
+      severity: kpis.runwayToFloorMonths <= 9 ? "critical" : "warning",
+      title:
+        kpis.runwayToFloorMonths === 0
+          ? "Starting cash is already below your floor"
+          : `Cash floor reached in ${kpis.runwayToFloorMonths} ${
+              kpis.runwayToFloorMonths === 1 ? "month" : "months"
+            }`,
+      detail: `Your ${money$(kpis.cashFloor)} floor is breached around ${kpis.runwayToFloorLabel}. The balance itself lasts ${
+        kpis.runwayMonths === null ? "past the horizon" : `until ${kpis.runwayMonthLabel}`
+      }, but the floor is the number you planned to protect.`,
+    });
+  }
+
+  if (kpis.collectionLagDays >= 15 && kpis.receivables > 0) {
+    insights.push({
+      id: "receivables",
+      severity: "info",
+      title: `Receivables tie up ${money$(kpis.receivables)}`,
+      detail: `${kpis.collectionLagDays}-day collection terms mean the bank balance runs behind revenue. Billing up front or shortening terms releases that cash.`,
+    });
+  }
+
+  if (kpis.taxPaid > 0) {
+    insights.push({
+      id: "tax",
+      severity: "info",
+      title: `Corporate tax: ${money$(kpis.taxPaid)} over the horizon`,
+      detail: `Modelled at ${percent(kpis.taxRate)} on positive profit with earlier losses carried forward. It leaves the bank account as the plan turns profitable.`,
     });
   }
 
@@ -466,6 +550,8 @@ const CSV_COLUMNS = [
   ["month", "Month"],
   ["revenue", "Revenue"],
   ["mrr", "MRR"],
+  ["collected", "Cash collected"],
+  ["receivables", "Receivables"],
   ["customers", "Customers"],
   ["cogs", "COGS"],
   ["grossProfit", "Gross profit"],
@@ -477,6 +563,7 @@ const CSV_COLUMNS = [
   ["other", "Other"],
   ["opex", "Operating expenses"],
   ["ebitda", "EBITDA"],
+  ["tax", "Corporate tax"],
   ["funding", "Funding"],
   ["cash", "Cash"],
 ];

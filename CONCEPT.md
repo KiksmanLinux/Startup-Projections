@@ -63,8 +63,14 @@ Alt regnes **månedlig** og rulles opp til år. Horisont: 24/36/48/60 måneder.
 - Verktøy, husleie og annet eskaleres hver for seg per år.
 - Alle driftskostnader (ikke COGS) skaleres med scenariofaktoren.
 
-**Kontanter:** `cash(t) = cash(t-1) + EBITDA(t) + funding(t)`, med startkapital som
-åpningsbalanse. Funding er en liste av runder med beløp og startmåned.
+**Kontantstrøm:** `cash(t) = cash(t−1) + innbetalt(t) − COGS(t) − OpEx(t) − skatt(t) + funding(t)`.
+Innbetalinger følger en collection lag: 0 dager betyr betalt på forskudd, 30 dager betyr at
+månedens omsetning kommer inn måneden etter, og 60 dager fordeler den over de to neste
+månedene. Det som er fakturert men ikke betalt, ligger som kundefordringer.
+
+**Skatt:** selskapsskatt på positiv EBITDA med underskudd til fremføring. Satsen er
+redigerbar (22 % er norsk selskapsskatt). Skatten betales i samme måned som overskuddet
+oppstår — en forenkling som rapporten sier eksplisitt.
 
 **Nøkkeltall:**
 
@@ -79,6 +85,9 @@ Alt regnes **månedlig** og rulles opp til år. Horisont: 24/36/48/60 måneder.
 | CAC payback | `CAC / (ARPU × bruttomargin)` |
 | Burn multiple | Netto burn / netto ny ARR (siste 12 mnd) |
 | Rule of 40 | Årsvekst + EBITDA-margin (utelates når omsetningsbasen er for liten) |
+| Runway til cash floor | Første måned under balansen du vil beskytte (ofte 3 mnd lønn) |
+| Kundefordringer | Fakturert, ikke innbetalt, ved horisontens slutt |
+| Eierandel etter runder | Produkt av `1 − investorandel` per priset runde, der `investorandel = beløp / (pre-money + beløp)` |
 
 **Scenarier** er multiplikatorer på samme plan (Upside 1,35× vekst / 0,7× churn,
 Downside 0,65× / 1,5×, Stress 0,4× / 2,2×, med tilsvarende kostnadspåslag).
@@ -103,6 +112,10 @@ bruttomargin ~80 %, månedlig churn under 2,5 %, LTV:CAC ≥ 3×, CAC payback un
   sammenlign to planer side om side med differanse per nøkkeltall og overlappende kontantkurver.
 - **Milepæler:** funding, første omsetning, ARR-nivåer, break-even og laveste kontantpunkt —
   i kalenderrekkefølge.
+- **Kontanttiming og buffergrense:** collection lag (0–90 dager), cash floor, og egne tall for
+  kundefordringer og skatt. Runway vises både til null og til buffergrensen.
+- **Eierskap:** pre-money per fundingrunde, post-money, investorens andel og founder-eierskap
+  etter hver runde — også i rapporten og i forutsetningslisten.
 - **Rapport:** én ren side med nøkkeltall, scenariotabell, milepæler og full
   forutsetningsliste. Utskrift/skjermbilde til PDF via nettleseren, med egen print-CSS.
 - **Deling og eksport:** hele modellen i URL-hash, CSV-eksport, autolagring i nettleseren.
@@ -134,7 +147,9 @@ bruttomargin ~80 %, månedlig churn under 2,5 %, LTV:CAC ≥ 3×, CAC payback un
 - [x] Planbibliotek med to-plans sammenligning
 - [x] Milepæler og utskriftsvennlig rapport med forutsetningsliste
 - [x] Skandinavisk design med `nord` og `vanilje`-tema
-- [x] 31 tester inkl. fuzz over 2 000 planer
+- [x] Kontanttiming (collection lag), cash floor og selskapsskatt med underskuddsfremføring
+- [x] Eierskap og utvanning per fundingrunde
+- [x] 44 tester inkl. fuzz over 2 000 planer
 
 **Neste kandidater**
 
@@ -143,6 +158,7 @@ bruttomargin ~80 %, månedlig churn under 2,5 %, LTV:CAC ≥ 3×, CAC payback un
 3. Flere inntektsstrømmer (abonnement + tjenester + engangs).
 4. Norske forhold: arbeidsgiveravgift og MVA som egne forhåndsvalg.
 5. Flere valutaer i samme plan (inntekt i EUR, kostnader i NOK).
+6. Faktiske tall mot plan: CSV-import av månedlig P&L med avvik per linje.
 
 ## Teknisk
 
@@ -156,9 +172,10 @@ src/
   lib/format.js           valuta/tall/dato-formatering
   lib/storage.js          localStorage + delbar lenke
   components/             Field, KpiCard, Charts, DataTable, Sidebar,
-                          SensitivityTable, Milestones, PlanLibrary, ReportView
+                          SensitivityTable, Milestones, PlanLibrary, ReportView, CapTable
   original/OriginalApp.jsx   v1, lastes lazy på #original
-  lib/*.test.js           Vitest: invarianter, kanttilfeller, fuzz, analyse
+  lib/*.test.js           Vitest: invarianter, kanttilfeller, fuzz, analyse,
+                          kontanttiming, skatt, cash floor og eierskap
 ```
 
 Kjør: `npm install && npm run dev` · test: `npm test` · bygg: `npm run build`

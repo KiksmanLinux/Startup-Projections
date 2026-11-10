@@ -278,9 +278,53 @@ export const FIELD_GROUPS = [
       },
     ],
   },
+  {
+    id: "tax",
+    title: "Tax",
+    accent: "slate",
+    fields: [
+      {
+        key: "taxRate",
+        models: ["customers", "growth"],
+        label: "Corporate tax on profit",
+        unit: "percent",
+        min: 0,
+        max: 0.5,
+        step: 0.01,
+        help: "Charged on positive EBITDA, with earlier losses carried forward. Norway is 22%. Set 0 for a pre-tax plan.",
+      },
+    ],
+  },
+  {
+    id: "timing",
+    title: "Cash timing",
+    accent: "mint",
+    fields: [
+      {
+        key: "collectionLagDays",
+        models: ["customers", "growth"],
+        label: "Collection lag",
+        unit: "days",
+        min: 0,
+        max: 90,
+        step: 5,
+        help: "Days between invoicing and cash arriving. 0 = paid up front, 30 = net-30, 60 = enterprise terms.",
+      },
+      {
+        key: "cashFloor",
+        models: ["customers", "growth"],
+        label: "Cash floor",
+        unit: "money",
+        min: 0,
+        max: 2000000,
+        step: 5000,
+        help: "The balance you refuse to go below — often three months of payroll. The Cash tab shows runway to this floor.",
+      },
+    ],
+  },
 ];
 
-export const FUNDING_LIMITS = { maxEvents: 8, maxAmount: 50_000_000, maxLabel: 40 };
+export const FUNDING_LIMITS = { maxEvents: 8, maxAmount: 50_000_000, maxLabel: 40, maxPreMoney: 1_000_000_000 };
 
 const findField = (key) => {
   for (const group of FIELD_GROUPS) {
@@ -330,7 +374,10 @@ export const DEFAULT_INPUTS = {
   otherGrowthPerYear: 0.03,
 
   startingCash: 300000,
-  fundingEvents: [{ id: "seed", label: "Seed round", amount: 750000, month: 3 }],
+  cashFloor: 0,
+  collectionLagDays: 0,
+  taxRate: 0.22,
+  fundingEvents: [{ id: "seed", label: "Seed round", amount: 750000, month: 3, preMoney: 4000000 }],
 };
 
 export const PRESETS = [
@@ -358,6 +405,7 @@ export const PRESETS = [
       marketingMonthly: 6000,
       marketingGrowthPerYear: 0.1,
       startingCash: 150000,
+      collectionLagDays: 30,
       fundingEvents: [],
     },
   },
@@ -382,7 +430,8 @@ export const PRESETS = [
       softwareMonthly: 3200,
       officeMonthly: 4000,
       startingCash: 180000,
-      fundingEvents: [{ id: "angel", label: "Angel round", amount: 300000, month: 4 }],
+      collectionLagDays: 7,
+      fundingEvents: [{ id: "angel", label: "Angel round", amount: 300000, month: 4, preMoney: 1500000 }],
     },
   },
   {
@@ -455,6 +504,9 @@ export function sanitizeFundingEvents(events, horizonMonths) {
           : 0,
         month: Number.isFinite(month)
           ? Math.min(Math.max(1, horizonMonths) - 1, Math.max(0, Math.round(month)))
+          : 0,
+        preMoney: Number.isFinite(Number(event?.preMoney))
+          ? Math.min(FUNDING_LIMITS.maxPreMoney, Math.max(0, Math.round(Number(event.preMoney))))
           : 0,
       };
     });

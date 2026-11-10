@@ -74,7 +74,9 @@ export function NumberField({ field, value, currency, onChange }) {
               }
             }}
           />
-          <span className="field__unit">{isPercent ? "%" : field.unit === "money" ? currency : ""}</span>
+          <span className="field__unit">
+            {isPercent ? "%" : field.unit === "money" ? currency : field.unit === "days" ? "d" : ""}
+          </span>
         </div>
       </div>
       <input

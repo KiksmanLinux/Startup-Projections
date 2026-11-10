@@ -73,6 +73,8 @@ export function formatFieldValue(value, unit, currency = "USD") {
       return percent(value, Number.isInteger(value * 1000) ? 0 : 1);
     case "count":
       return count(value);
+    case "days":
+      return `${count(value)} days`;
     case "money":
       return amount(value, currency);
     default:
